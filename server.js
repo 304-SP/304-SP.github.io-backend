@@ -6,7 +6,7 @@ const app = express();
 
 app.use(express.json());
 
-// Libera o CORS para que o seu GitHub Pages consiga fazer requisições sem bloqueios
+// Libera o CORS para garantir que seu GitHub Pages acesse sem problemas
 app.use(cors());
 
 // ==========================================
@@ -29,6 +29,8 @@ app.post('/api/login', async (req, res) => {
                 details: 'A variável de ambiente SED_SUBSCRIPTION_KEY não foi definida no painel do Render.' 
             });
         }
+
+        console.log(`==> Efetuando login para o usuário: ${user}`);
 
         const response = await axios.post('https://sedintegracoes.educacao.sp.gov.br/saladofuturobffapi/credenciais/api/LoginCompletoToken', 
         {
@@ -65,28 +67,41 @@ app.post('/api/login', async (req, res) => {
 // ==========================================
 app.get('/api/dados-aluno', async (req, res) => {
     try {
-        let { codigoAluno } = req.query;
+        let { codigoAluno, token } = req.query;
         let authHeader = req.headers.authorization;
 
         if (!codigoAluno) {
             return res.status(400).json({ error: 'O parâmetro codigoAluno é obrigatório' });
         }
-        if (!authHeader) {
-            return res.status(401).json({ error: 'O token de autorização é obrigatório' });
-        }
 
-        // Correção automática de 9 para 8 dígitos
+        // Correção automática do código do aluno de 9 para 8 dígitos
         let codigoTratado = String(codigoAluno).trim();
         if (codigoTratado.length === 9) {
             codigoTratado = codigoTratado.slice(0, -1);
         }
 
+        // Descobre onde está o token (pode vir no Header Authorization ou como parâmetro na URL)
+        let tokenFinal = "";
+        if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+            tokenFinal = authHeader.slice(7).trim();
+        } else if (authHeader) {
+            tokenFinal = authHeader.trim();
+        } else if (token) {
+            tokenFinal = token.trim();
+        }
+
+        // Validação se o token realmente existe e não é uma string inválida
+        if (!tokenFinal || tokenFinal === "undefined" || tokenFinal === "null") {
+            console.error(`❌ REQUISIÇÃO REJEITADA: Token inválido ou ausente enviado pelo frontend.`);
+            return res.status(401).json({ error: 'O token de autorização enviado é inválido ou ausente.' });
+        }
+
         const subKey = process.env.SED_SUBSCRIPTION_KEY;
 
-        // Cabeçalhos blindados e idênticos aos que saem do sistema oficial da SED
+        // Montagem minuciosa dos headers exigidos pelo Gateway da SED
         const axiosConfig = {
             headers: {
-                'Authorization': authHeader, // Formato puro "Bearer eyJ..." enviado pelo front
+                'Authorization': `Bearer ${tokenFinal}`, // Garante a formatação perfeitinha espacial
                 'Ocp-Apim-Subscription-Key': subKey,
                 'Subscription-Key': subKey,
                 'Accept': 'application/json, text/plain, */*',

@@ -13,21 +13,44 @@ app.use(cors());
 app.post('/api/login', async (req, res) => {
     try {
         const { user, senha } = req.body;
+
+        // Validação básica antes de gastar processamento
+        if (!user || !senha) {
+            return res.status(400).json({ error: 'Usuário e senha são obrigatórios.' });
+        }
         
-        const response = await axios.post('https://sedintegracoes.educacao.sp.gov.br/saladofuturobffapi/credenciais/api/LoginCompletoToken', {
-            user,
-            senha
+        // Faz o envio adicionando cabeçalhos comuns que evitam bloqueios de segurança (401/403)
+        const response = await axios.post('https://sedintegracoes.educacao.sp.gov.br/saladofuturobffapi/credenciais/api/LoginCompletoToken', 
+        {
+            user: String(user).trim(),  // Remove espaços extras acidentais
+            senha: String(senha)
+        },
+        {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json, text/plain, */*',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
         });
         
-        res.json(response.data);
+        // Se a SED responder sucesso, repassamos os dados
+        return res.json(response.data);
+
     } catch (error) {
-        res.status(error.response?.status || 500).json({
-            error: 'Erro ao conectar à API de Login da SED',
+        // Se a API da SED retornar um erro (como o 401), pegamos a resposta exata dela
+        if (error.response) {
+            return res.status(error.response.status).json({
+                error: 'A API da SED recusou as credenciais.',
+                details: error.response.data || 'Usuário ou senha inválidos na base do governo.'
+            });
+        }
+
+        return res.status(500).json({
+            error: 'Erro interno ao tentar alcançar o servidor da SED',
             details: error.message
         });
     }
 });
-
 // Rota 2: Obter Dados Escolares (Turma e Faltas combinados)
 app.get('/api/dados-aluno', async (req, res) => {
     try {

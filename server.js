@@ -60,46 +60,53 @@ app.post('/api/login', async (req, res) => {
         });
     }
 });
+
 // Rota 2: Obter Dados Escolares (Turma e Faltas combinados) - AGORA COM AUTH BEARER
 app.get('/api/dados-aluno', async (req, res) => {
     try {
         const { codigoAluno } = req.query;
-        
-        // Pega o token que o frontend vai mandar via cabeçalho de autorização
-        const authHeader = req.headers.authorization;
+        let authHeader = req.headers.authorization;
 
         if (!codigoAluno) {
             return res.status(400).json({ error: 'O parâmetro codigoAluno é obrigatório' });
         }
-
         if (!authHeader) {
-            return res.status(401).json({ error: 'O cabeçalho Authorization (Token) é obrigatório' });
+            return res.status(401).json({ error: 'O token é obrigatório' });
         }
 
         const subKey = process.env.SED_SUBSCRIPTION_KEY;
+        
+        // Limpa a palavra "Bearer " caso queiramos testar o token puro
+        const tokenPuro = authHeader.replace(/^Bearer\s+/i, '');
 
-        // Montamos o cabeçalho perfeito: chave de assinatura + Token JWT do Aluno
+        // Vamos montar os cabeçalhos tentando agradar o gateway da SED de todas as formas conhecidas
         const axiosConfig = {
             headers: {
                 'Accept': 'application/json, text/plain, */*',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Ocp-Apim-Subscription-Key': subKey,
                 'Subscription-Key': subKey,
-                'Authorization': authHeader // Repassa o "Bearer eyJhbGci..." recebido do front
+                
+                // Formato 1: Bearer Token (padrão que você enviou)
+                'Authorization': authHeader, 
+                
+                // Formato 2: Muitas APIs do Azure API Management usam uma destas chaves para o Token JWT puro
+                'token': tokenPuro,
+                'X-Authorization': tokenPuro
             }
         };
 
         const urlTurma = `https://sedintegracoes.educacao.sp.gov.br/saladofuturobffapi/apihubintegracoes/api/v2/Turma/ListarTurmasPorAluno?codigoAluno=${codigoAluno}`;
         const urlFaltas = `https://sedintegracoes.educacao.sp.gov.br/saladofuturobffapi/apiboletim/api/Frequencia/GetFaltasBimestreAtual?codigoAluno=${codigoAluno}`;
 
-        // Executa as duas requisições enviando tudo o que o gateway do governo exige
         const [resTurma, resFaltas] = await Promise.all([
             axios.get(urlTurma, axiosConfig).catch((err) => {
-                console.error("Erro na rota de Turma:", err.response?.status || err.message);
+                // Modificado para mostrar no log do Render se a SED respondeu alguma mensagem de erro explicativa
+                console.error("Erro na rota de Turma:", err.response?.status, err.response?.data);
                 return { data: null };
             }),
             axios.get(urlFaltas, axiosConfig).catch((err) => {
-                console.error("Erro na rota de Faltas:", err.response?.status || err.message);
+                console.error("Erro na rota de Faltas:", err.response?.status, err.response?.data);
                 return { data: null };
             })
         ]);
@@ -109,8 +116,12 @@ app.get('/api/dados-aluno', async (req, res) => {
             faltas: resFaltas.data
         });
     } catch (error) {
-        res.status(500).json({ error: 'Erro ao buscar dados complementares do aluno', details: error.message });
+        res.status(500).json({ error: 'Erro interno', details: error.message });
     }
 });
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor rodando com sucesso na porta ${PORT}`));
+
+// CORREÇÃO AQUI: Garante que o Render use a porta padrão deles (10000) caso process.env.PORT falhe localmente
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log(`Servidor rodando com sucesso na porta ${PORT}`);
+});

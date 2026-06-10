@@ -14,34 +14,43 @@ app.post('/api/login', async (req, res) => {
     try {
         const { user, senha } = req.body;
 
-        // Validação básica antes de gastar processamento
         if (!user || !senha) {
             return res.status(400).json({ error: 'Usuário e senha são obrigatórios.' });
         }
+
+        // Puxa a chave configurada na Environment Variable do Render
+        const subKey = process.env.SED_SUBSCRIPTION_KEY;
+
+        if (!subKey) {
+            return res.status(500).json({ 
+                error: 'Configuração incompleta no servidor', 
+                details: 'A variável de ambiente SED_SUBSCRIPTION_KEY não foi definida no painel do Render.' 
+            });
+        }
         
-        // Faz o envio adicionando cabeçalhos comuns que evitam bloqueios de segurança (401/403)
         const response = await axios.post('https://sedintegracoes.educacao.sp.gov.br/saladofuturobffapi/credenciais/api/LoginCompletoToken', 
         {
-            user: String(user).trim(),  // Remove espaços extras acidentais
+            user: String(user).trim(),
             senha: String(senha)
         },
         {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json, text/plain, */*',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                // Injeta a chave nos cabeçalhos padrões de API Gateways da Microsoft (Azure APIM)
+                'Ocp-Apim-Subscription-Key': subKey,
+                'Subscription-Key': subKey
             }
         });
         
-        // Se a SED responder sucesso, repassamos os dados
         return res.json(response.data);
 
     } catch (error) {
-        // Se a API da SED retornar um erro (como o 401), pegamos a resposta exata dela
         if (error.response) {
             return res.status(error.response.status).json({
-                error: 'A API da SED recusou as credenciais.',
-                details: error.response.data || 'Usuário ou senha inválidos na base do governo.'
+                error: 'A API da SED recusou a requisição ou as credenciais.',
+                details: error.response.data
             });
         }
 

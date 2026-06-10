@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 
-const app = WebApp = express();
+const app = express();
 
 app.use(express.json());
 
@@ -23,14 +23,12 @@ app.post('/api/login', async (req, res) => {
         const subKey = process.env.SED_SUBSCRIPTION_KEY;
 
         if (!subKey) {
-            console.error("==> ERRO CRÍTICO: SED_SUBSCRIPTION_KEY não está configurada no Render!");
+            console.error("==> ERRO CRÍTICO: SED_SUBSCRIPTION_KEY não configurada!");
             return res.status(500).json({ 
                 error: 'Configuração incompleta no servidor', 
                 details: 'A variável de ambiente SED_SUBSCRIPTION_KEY não foi definida no painel do Render.' 
             });
         }
-        
-        console.log(`==> Tentativa de login para o usuário proxy`);
 
         const response = await axios.post('https://sedintegracoes.educacao.sp.gov.br/saladofuturobffapi/credenciais/api/LoginCompletoToken', 
         {
@@ -43,7 +41,9 @@ app.post('/api/login', async (req, res) => {
                 'Accept': 'application/json, text/plain, */*',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Ocp-Apim-Subscription-Key': subKey,
-                'Subscription-Key': subKey
+                'Subscription-Key': subKey,
+                'Origin': 'https://saladofuturo.educacao.sp.gov.br',
+                'Referer': 'https://saladofuturo.educacao.sp.gov.br/'
             }
         });
         
@@ -51,7 +51,6 @@ app.post('/api/login', async (req, res) => {
 
     } catch (error) {
         if (error.response) {
-            console.error(`=> ERRO NO LOGIN (Status ${error.response.status}):`, JSON.stringify(error.response.data));
             return res.status(error.response.status).json({
                 error: 'A API da SED recusou as credenciais.',
                 details: error.response.data
@@ -76,24 +75,25 @@ app.get('/api/dados-aluno', async (req, res) => {
             return res.status(401).json({ error: 'O token de autorização é obrigatório' });
         }
 
-        // CORREÇÃO AUTOMÁTICA: O sistema da SED espera 8 dígitos para o aluno.
-        // Se o front enviar o CD_USUARIO de 9 dígitos (ex: 317503856), removemos o último caractere.
+        // Correção automática de 9 para 8 dígitos
         let codigoTratado = String(codigoAluno).trim();
         if (codigoTratado.length === 9) {
             codigoTratado = codigoTratado.slice(0, -1);
         }
 
-        console.log(`=> Solicitando dados para o Aluno Tratado: ${codigoTratado}`);
-
         const subKey = process.env.SED_SUBSCRIPTION_KEY;
 
+        // Cabeçalhos blindados e idênticos aos que saem do sistema oficial da SED
         const axiosConfig = {
             headers: {
-                'Accept': 'application/json, text/plain, */*',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Authorization': authHeader, // Formato puro "Bearer eyJ..." enviado pelo front
                 'Ocp-Apim-Subscription-Key': subKey,
                 'Subscription-Key': subKey,
-                'Authorization': authHeader
+                'Accept': 'application/json, text/plain, */*',
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Origin': 'https://saladofuturo.educacao.sp.gov.br',
+                'Referer': 'https://saladofuturo.educacao.sp.gov.br/'
             }
         };
 
